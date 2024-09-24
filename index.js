@@ -1,14 +1,14 @@
 const express = require('express');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const fs = require('fs')
+const fs = require('fs');
 const qrcode = require('qrcode-terminal');
 const multer = require('multer');
 const path = require('path');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
-// Initialize the WhatsApp client
+// Initialize WhatsApp client
 const client = new Client({
     authStrategy: new LocalAuth(),
 });
@@ -24,19 +24,16 @@ client.on('ready', () => {
 
 client.initialize();
 
-// Middleware to handle JSON requests
 app.use(express.json());
 
-// Set up file storage using multer
 const storage = multer.diskStorage({
     destination: './uploads/',
     filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname)); // Save files with a timestamp
+        cb(null, Date.now() + path.extname(file.originalname));
     },
 });
 const upload = multer({ storage: storage });
 
-// API endpoint to send a text message
 app.post('/send-message', (req, res) => {
     const { phoneNumber, message } = req.body;
 
@@ -55,7 +52,6 @@ app.post('/send-message', (req, res) => {
         });
 });
 
-// API endpoint to send media (images, audio, documents)
 app.post('/send-media', upload.single('file'), (req, res) => {
     const { phoneNumber } = req.body;
     const file = req.file;
@@ -67,12 +63,10 @@ app.post('/send-media', upload.single('file'), (req, res) => {
     const chatId = `${phoneNumber}@c.us`;
     const filePath = path.resolve(__dirname, 'uploads', file.filename);
 
-    // Check if the file exists before sending
     if (!fs.existsSync(filePath)) {
         return res.status(404).send('File not found.');
     }
 
-    // Load the media file using MessageMedia
     const media = MessageMedia.fromFilePath(filePath);
 
     client.sendMessage(chatId, media)
@@ -84,8 +78,6 @@ app.post('/send-media', upload.single('file'), (req, res) => {
         });
 });
 
-
-// Start the server
 app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+    console.log(`Server running on http://localhost:${port}`);
 });
