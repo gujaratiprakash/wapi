@@ -1,10 +1,13 @@
 const express = require('express');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const fs = require('fs');
-const qrcode = require('qrcode-terminal');
+const qrcode = require('qrcode'); // Updated to use 'qrcode' package
 const multer = require('multer');
 const path = require('path');
-const { createServer } = require('http');
+const http = require('http');
+
+let qrCodeData = ''; // Variable to store the QR code data
+let clientReady = false; // Flag to track if the client is ready
 
 // Initialize the WhatsApp client
 const client = new Client({
@@ -12,12 +15,26 @@ const client = new Client({
 });
 
 client.on('qr', (qr) => {
-    qrcode.generate(qr, { small: true });
-    console.log('Scan the QR code to log in.');
+    qrCodeData = qr; // Store the QR code data in a variable
+    console.log('QR code generated. Ready for scanning.');
 });
 
 client.on('ready', () => {
     console.log('WhatsApp client is ready!');
+    clientReady = true; // Set clientReady to true when the client is ready
+});
+
+client.on('authenticated', () => {
+    console.log('WhatsApp client authenticated successfully!');
+});
+
+client.on('auth_failure', (msg) => {
+    console.error('Authentication failure: ', msg);
+});
+
+client.on('disconnected', (reason) => {
+    console.log('Client was logged out', reason);
+    clientReady = false; // Set clientReady to false if the client disconnects
 });
 
 client.initialize();
@@ -33,9 +50,44 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+// API endpoint to get the WhatsApp QR code as an HTML image
+app.get('/get-qr', async (req, res) => {
+    if (qrCodeData) {
+        try {
+            // Generate base64 QR code from qrCodeData
+            const qrImage = await qrcode.toDataURL(qrCodeData);
+
+            // Return HTML with the embedded QR code image
+            res.send(`
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>WhatsApp QR Code</title>
+                </head>
+                <body>
+                    <h1>Scan the QR Code with WhatsApp</h1>
+                    <img src="${qrImage}" alt="WhatsApp QR Code" />
+                </body>
+                </html>
+            `);
+        } catch (err) {
+            res.status(500).send('Error generating QR code image.');
+        }
+    } else {
+        res.status(503).send('QR code not available yet, please try again.');
+    }
+});
+
 // API endpoint to send a text message
 app.post('/send-message', (req, res) => {
     const { phoneNumber, message } = req.body;
+
+    // Check if the client is ready
+    if (!clientReady) {
+        return res.status(503).send('WhatsApp client not ready. Please try again later.');
+    }
 
     if (!phoneNumber || !message) {
         return res.status(400).send('Phone number and message are required.');
@@ -48,6 +100,7 @@ app.post('/send-message', (req, res) => {
             res.status(200).send('Message sent successfully!');
         })
         .catch(err => {
+            console.error('Failed to send the message: ', err);
             res.status(500).send('Failed to send the message: ' + err);
         });
 });
@@ -56,6 +109,11 @@ app.post('/send-message', (req, res) => {
 app.post('/send-media', upload.single('file'), (req, res) => {
     const { phoneNumber } = req.body;
     const file = req.file;
+
+    // Check if the client is ready
+    if (!clientReady) {
+        return res.status(503).send('WhatsApp client not ready. Please try again later.');
+    }
 
     if (!phoneNumber || !file) {
         return res.status(400).send('Phone number and media file are required.');
@@ -77,11 +135,15 @@ app.post('/send-media', upload.single('file'), (req, res) => {
             res.status(200).send('Media sent successfully!');
         })
         .catch(err => {
+            console.error('Failed to send the media: ', err);
             res.status(500).send('Failed to send the media: ' + err);
         });
 });
 
-// Export the app as a Vercel serverless function
-module.exports = (req, res) => {
-    app(req, res);
-};
+// Set server URL and port
+const port = process.env.PORT || 3000;
+const server = http.createServer(app);
+
+server.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}/`);
+});
