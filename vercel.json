@@ -2,7 +2,7 @@
     "version": 2,
     "builds": [
       {
-        "src": "api/index.js",
+        "src": "index.js",
         "use": "@vercel/node"
       },
       {
@@ -18,12 +18,12 @@
       {
         "src": "/send-message",
         "methods": ["POST"],
-        "dest": "/api/index.js"
+        "dest": "/index.js"
       },
       {
         "src": "/send-media",
         "methods": ["POST"],
-        "dest": "/api/index.js"
+        "dest": "/index.js"
       }
     ]
   }
